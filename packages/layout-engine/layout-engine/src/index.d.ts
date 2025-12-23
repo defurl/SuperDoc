@@ -24,6 +24,13 @@ export type LayoutOptions = {
   margins?: Margins;
   columns?: ColumnLayout;
   remeasureParagraph?: (block: ParagraphBlock, maxWidth: number, firstLineIndent?: number) => ParagraphMeasure;
+  /**
+   * Global table row break behavior for all tables in the document.
+   * - 'avoid': Prevents ALL table rows from splitting mid-row across page breaks.
+   * - 'allow': Rows can split across pages (default MS Word behavior).
+   * - undefined: Use each row's individual cantSplit setting (default).
+   */
+  tableRowBreak?: 'avoid' | 'allow';
 };
 export type HeaderFooterConstraints = {
   width: number;

@@ -447,6 +447,13 @@ export type TableAttrs = {
   cellSpacing?: number;
   sdt?: SdtMetadata;
   containerSdt?: SdtMetadata;
+  /**
+   * Controls whether table rows can break across page boundaries.
+   * - 'avoid': Prevents ALL rows in this table from splitting mid-row (like cantSplit on every row)
+   * - 'allow': Rows can split across pages (default MS Word behavior)
+   * - undefined: Use individual row's cantSplit setting (default)
+   */
+  tableRowBreak?: 'avoid' | 'allow';
   [key: string]: unknown;
 };
 

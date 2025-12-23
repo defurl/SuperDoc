@@ -290,6 +290,17 @@ export type LayoutEngineOptions = {
    * inch marks and optionally margin handles for interactive margin adjustment.
    */
   ruler?: RulerOptions;
+  /**
+   * Global table row break behavior.
+   * - 'avoid': Prevents ALL table rows from splitting mid-row across page breaks.
+   *   Rows that don't fit on the current page will move to the next page entirely.
+   * - 'allow': Rows can split across pages (default MS Word behavior).
+   * - undefined: Use each row's individual cantSplit setting (default).
+   *
+   * This is useful when you want consistent table rendering without row fragments.
+   * Note: Rows taller than a full page will still split to prevent infinite loops.
+   */
+  tableRowBreak?: 'avoid' | 'allow';
 };
 
 export type TrackedChangesOverrides = {
@@ -710,6 +721,7 @@ export class PresentationEditor extends EventEmitter {
       layoutMode: options.layoutEngineOptions?.layoutMode ?? 'vertical',
       trackedChanges: options.layoutEngineOptions?.trackedChanges,
       presence: validatedPresence,
+      tableRowBreak: options.layoutEngineOptions?.tableRowBreak,
     };
     this.#trackedChangesOverrides = options.layoutEngineOptions?.trackedChanges;
 
@@ -4611,6 +4623,8 @@ export class PresentationEditor extends EventEmitter {
         Partial<Pick<PageMargins, 'header' | 'footer'>>,
       ...(columns ? { columns } : {}),
       sectionMetadata,
+      // Pass tableRowBreak from layoutEngineOptions to the layout engine
+      ...(this.#layoutOptions.tableRowBreak ? { tableRowBreak: this.#layoutOptions.tableRowBreak } : {}),
     };
   }
 

@@ -134,6 +134,7 @@
  * @property {TelemetryConfig} [telemetry] Telemetry configuration
  * @property {Object} [layoutEngineOptions] Layout engine overrides passed through to PresentationEditor (page size, margins, virtualization, zoom, debug label, etc.)
  * @property {Object} [layoutEngineOptions.trackedChanges] Optional override for paginated track-changes rendering (e.g., `{ mode: 'final' }` to force final view or `{ enabled: false }` to strip metadata entirely)
+ * @property {'avoid'|'allow'} [layoutEngineOptions.tableRowBreak] Global table row break behavior. 'avoid' prevents table rows from splitting mid-row across page breaks (rows move to next page as whole units). 'allow' permits rows to split (default MS Word behavior). If undefined, each row's individual cantSplit setting is used.
  * @property {(editor: Editor) => void} [onEditorBeforeCreate] Callback before an editor is created
  * @property {(editor: Editor) => void} [onEditorCreate] Callback after an editor is created
  * @property {(params: { editor: Editor, transaction: any, duration: number }) => void} [onTransaction] Callback when a transaction is made

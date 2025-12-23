@@ -94,6 +94,18 @@ export type LayoutOptions = {
    * Values are the actual content heights in pixels.
    */
   footerContentHeights?: Partial<Record<'default' | 'first' | 'even' | 'odd', number>>;
+  /**
+   * Global table row break behavior for all tables in the document.
+   * - 'avoid': Prevents ALL table rows from splitting mid-row across page breaks.
+   *   Rows that are taller than the available page height will still split to
+   *   prevent infinite loops.
+   * - 'allow': Rows can split across pages (default MS Word behavior).
+   * - undefined: Use each row's individual cantSplit setting (default).
+   *
+   * This option affects all tables in the document. Individual table-level
+   * settings (TableAttrs.tableRowBreak) will override this global setting.
+   */
+  tableRowBreak?: 'avoid' | 'allow';
 };
 
 export type HeaderFooterConstraints = {
@@ -1539,6 +1551,7 @@ export function layoutDocument(blocks: FlowBlock[], measures: Measure[], options
         ensurePage: paginator.ensurePage,
         advanceColumn: paginator.advanceColumn,
         columnX,
+        globalTableRowBreak: options.tableRowBreak,
       });
       continue;
     }

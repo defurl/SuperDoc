@@ -20,6 +20,11 @@ export type TableLayoutContext = {
   ensurePage: () => PageState;
   advanceColumn: (state: PageState) => PageState;
   columnX: (columnIndex: number) => number;
+  /**
+   * Global table row break behavior from LayoutOptions.
+   * Individual table-level settings (block.attrs.tableRowBreak) override this.
+   */
+  globalTableRowBreak?: 'avoid' | 'allow';
 };
 
 /**
@@ -840,11 +845,17 @@ function computePartialRow(
  * Find the split point for table rows given available height and constraints.
  *
  * Algorithm:
- * 1. Iterate rows from startRow, accumulating heights
- * 2. Check cantSplit attribute for each row
- * 3. Return endRow (exclusive) where split should occur
- * 4. For rows that don't fit AND don't have cantSplit, split mid-row using computePartialRow()
- * 5. For over-tall rows (row > fullPageHeight), force mid-row split even with cantSplit
+ * 1. Check table-level tableRowBreak setting ('avoid'/'allow'/undefined)
+ * 2. Iterate rows from startRow, accumulating heights
+ * 3. Check cantSplit attribute for each row (or use table-level setting)
+ * 4. Return endRow (exclusive) where split should occur
+ * 5. For rows that don't fit AND don't have cantSplit, split mid-row using computePartialRow()
+ * 6. For over-tall rows (row > fullPageHeight), force mid-row split even with cantSplit
+ *
+ * Table-Level tableRowBreak:
+ * - 'avoid': ALL rows in the table are treated as cantSplit=true
+ * - 'allow': ALL rows can split (overrides row-level cantSplit)
+ * - undefined: Use each row's individual cantSplit setting (default MS Word behavior)
  *
  * MS Word Behavior:
  * - Default: Rows CAN break across pages (cantSplit = false by default)
@@ -858,6 +869,7 @@ function computePartialRow(
  * @param availableHeight - Available vertical space
  * @param fullPageHeight - Full page height (for detecting over-tall rows)
  * @param pendingPartialRow - If continuing a partial row from previous page
+ * @param effectiveTableRowBreak - Resolved tableRowBreak setting (from table-level or global)
  * @returns Split point result with endRow and partialRow
  */
 function findSplitPoint(
@@ -867,14 +879,25 @@ function findSplitPoint(
   availableHeight: number,
   fullPageHeight?: number,
   _pendingPartialRow?: PartialRowInfo | null,
+  effectiveTableRowBreak?: 'avoid' | 'allow',
 ): SplitPointResult {
   let accumulatedHeight = 0;
   let lastFitRow = startRow; // Last row that fit completely
 
+  // Use the passed effectiveTableRowBreak which has already resolved
+  // the priority: table-level > global > undefined (use per-row cantSplit)
+  const tableRowBreak = effectiveTableRowBreak;
+
   for (let i = startRow; i < block.rows.length; i++) {
     const row = block.rows[i];
     const rowHeight = measure.rows[i]?.height || 0;
-    const cantSplit = row.attrs?.tableRowProperties?.cantSplit === true;
+
+    // Determine if this row should avoid splitting:
+    // 1. If tableRowBreak is 'avoid', ALL rows are treated as cantSplit
+    // 2. If tableRowBreak is 'allow', rows can split even if cantSplit is true
+    // 3. If tableRowBreak is undefined, use the row's own cantSplit setting
+    const rowCantSplit = row.attrs?.tableRowProperties?.cantSplit === true;
+    const cantSplit = tableRowBreak === 'avoid' ? true : tableRowBreak === 'allow' ? false : rowCantSplit;
 
     // Check if this row fits completely
     if (accumulatedHeight + rowHeight <= availableHeight) {
@@ -1021,17 +1044,22 @@ export function layoutTableBlock({
   ensurePage,
   advanceColumn,
   columnX,
+  globalTableRowBreak,
 }: TableLayoutContext): void {
   // Skip anchored/floating tables handled by the float manager
   if (block.anchor?.isAnchored) {
     return;
   }
 
+  // Resolve the effective tableRowBreak setting.
+  // Priority: table-level setting > global setting > undefined (use per-row cantSplit)
+  const effectiveTableRowBreak = (block.attrs?.tableRowBreak as 'avoid' | 'allow' | undefined) ?? globalTableRowBreak;
+
   // 1. Detect floating tables - use monolithic layout
   const tableProps = block.attrs?.tableProperties as Record<string, unknown> | undefined;
   const floatingProps = tableProps?.floatingTableProperties as Record<string, unknown> | undefined;
   if (floatingProps && Object.keys(floatingProps).length > 0) {
-    layoutMonolithicTable({ block, measure, columnWidth, ensurePage, advanceColumn, columnX });
+    layoutMonolithicTable({ block, measure, columnWidth, ensurePage, advanceColumn, columnX, globalTableRowBreak });
     return;
   }
 
@@ -1055,7 +1083,12 @@ export function layoutTableBlock({
 
   if (hasMeasuredRows && hasPriorFragments) {
     // Decision tree for tables with measured rows and existing page content:
-    const firstRowCantSplit = block.rows[0]?.attrs?.tableRowProperties?.cantSplit === true;
+    // Use the effective tableRowBreak (already resolved from table-level or global)
+    const rowCantSplit = block.rows[0]?.attrs?.tableRowProperties?.cantSplit === true;
+
+    // Determine if first row should avoid splitting (same logic as findSplitPoint)
+    const firstRowCantSplit =
+      effectiveTableRowBreak === 'avoid' ? true : effectiveTableRowBreak === 'allow' ? false : rowCantSplit;
     const firstRowHeight = measure.rows[0]?.height ?? measure.totalHeight ?? 0;
 
     if (firstRowCantSplit) {
@@ -1242,7 +1275,15 @@ export function layoutTableBlock({
 
     // Normal row processing
     const bodyStartRow = currentRow;
-    const { endRow, partialRow } = findSplitPoint(block, measure, bodyStartRow, availableForBody, fullPageHeight);
+    const { endRow, partialRow } = findSplitPoint(
+      block,
+      measure,
+      bodyStartRow,
+      availableForBody,
+      fullPageHeight,
+      null,
+      effectiveTableRowBreak,
+    );
 
     // If no rows fit and page has content, advance
     if (endRow === bodyStartRow && partialRow === null && state.page.fragments.length > 0) {
