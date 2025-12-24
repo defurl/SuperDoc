@@ -90,6 +90,18 @@ export interface AdapterOptions {
   blockIdPrefix?: string;
 
   /**
+   * Optional list of ProseMirror node type names that should be treated as atom/leaf nodes
+   * for position mapping. Use this to keep PM positions correct when custom atom nodes exist.
+   */
+  atomNodeTypes?: Iterable<string>;
+
+  /**
+   * Optional precomputed position map keyed by the PM JSON nodes passed to toFlowBlocks.
+   * When provided, this is used directly instead of building a new position map.
+   */
+  positions?: PositionMap;
+
+  /**
    * Optional media files map for hydrating image blocks.
    * Key: normalized file path (e.g., "word/media/image1.jpeg")
    * Value: base64-encoded image data
@@ -280,42 +292,7 @@ export interface NodeHandlerContext {
   };
 
   // Converters for nested content
-  converters?: {
-    paragraphToFlowBlocks?: (
-      para: PMNode,
-      nextBlockId: BlockIdGenerator,
-      positions: PositionMap,
-      defaultFont: string,
-      defaultSize: number,
-      styleContext: StyleContext,
-      listCounterContext?: ListCounterContext,
-      trackedChanges?: TrackedChangesConfig,
-      bookmarks?: Map<string, number>,
-      hyperlinkConfig?: HyperlinkConfig,
-      themeColors?: ThemeColorPalette,
-      converterContext?: ConverterContext,
-    ) => FlowBlock[];
-    tableNodeToBlock?: (
-      node: PMNode,
-      nextBlockId: BlockIdGenerator,
-      positions: PositionMap,
-      defaultFont: string,
-      defaultSize: number,
-      styleContext: StyleContext,
-      trackedChanges?: TrackedChangesConfig,
-      bookmarks?: Map<string, number>,
-      hyperlinkConfig?: HyperlinkConfig,
-      themeColors?: ThemeColorPalette,
-      converterContext?: ConverterContext,
-    ) => FlowBlock | null;
-    imageNodeToBlock?: (
-      node: PMNode,
-      nextBlockId: BlockIdGenerator,
-      positions: PositionMap,
-      trackedMeta?: TrackedChangeMeta,
-      trackedChanges?: TrackedChangesConfig,
-    ) => FlowBlock | null;
-  };
+  converters?: NestedConverters;
 }
 
 /**
@@ -331,6 +308,67 @@ export type ListCounterContext = {
   getListCounter: (numId: number, ilvl: number) => number;
   incrementListCounter: (numId: number, ilvl: number) => number;
   resetListCounter: (numId: number, ilvl: number) => void;
+};
+
+export type ParagraphToFlowBlocksConverter = (
+  para: PMNode,
+  nextBlockId: BlockIdGenerator,
+  positions: PositionMap,
+  defaultFont: string,
+  defaultSize: number,
+  styleContext: StyleContext,
+  listCounterContext?: ListCounterContext,
+  trackedChanges?: TrackedChangesConfig,
+  bookmarks?: Map<string, number>,
+  hyperlinkConfig?: HyperlinkConfig,
+  themeColors?: ThemeColorPalette,
+  converterContext?: ConverterContext,
+) => FlowBlock[];
+
+export type ImageNodeToBlockConverter = (
+  node: PMNode,
+  nextBlockId: BlockIdGenerator,
+  positions: PositionMap,
+  trackedMeta?: TrackedChangeMeta,
+  trackedChanges?: TrackedChangesConfig,
+) => FlowBlock | null;
+
+export type DrawingNodeToBlockConverter = (
+  node: PMNode,
+  nextBlockId: BlockIdGenerator,
+  positions: PositionMap,
+) => FlowBlock | null;
+
+export type TableNodeToBlockOptions = {
+  listCounterContext?: ListCounterContext;
+  converters?: NestedConverters;
+};
+
+export type TableNodeToBlockConverter = (
+  node: PMNode,
+  nextBlockId: BlockIdGenerator,
+  positions: PositionMap,
+  defaultFont: string,
+  defaultSize: number,
+  styleContext: StyleContext,
+  trackedChanges?: TrackedChangesConfig,
+  bookmarks?: Map<string, number>,
+  hyperlinkConfig?: HyperlinkConfig,
+  themeColors?: ThemeColorPalette,
+  paragraphToFlowBlocks?: ParagraphToFlowBlocksConverter,
+  converterContext?: ConverterContext,
+  options?: TableNodeToBlockOptions,
+) => FlowBlock | null;
+
+export type NestedConverters = {
+  paragraphToFlowBlocks?: ParagraphToFlowBlocksConverter;
+  tableNodeToBlock?: TableNodeToBlockConverter;
+  contentBlockNodeToDrawingBlock?: DrawingNodeToBlockConverter;
+  imageNodeToBlock?: ImageNodeToBlockConverter;
+  vectorShapeNodeToDrawingBlock?: DrawingNodeToBlockConverter;
+  shapeGroupNodeToDrawingBlock?: DrawingNodeToBlockConverter;
+  shapeContainerNodeToDrawingBlock?: DrawingNodeToBlockConverter;
+  shapeTextboxNodeToDrawingBlock?: DrawingNodeToBlockConverter;
 };
 
 /**

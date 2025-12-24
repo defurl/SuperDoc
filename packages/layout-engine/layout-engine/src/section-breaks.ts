@@ -3,8 +3,12 @@ import type { SectionBreakBlock } from '@superdoc/contracts';
 export type SectionState = {
   activeTopMargin: number;
   activeBottomMargin: number;
+  activeLeftMargin: number;
+  activeRightMargin: number;
   pendingTopMargin: number | null;
   pendingBottomMargin: number | null;
+  pendingLeftMargin: number | null;
+  pendingRightMargin: number | null;
   activeHeaderDistance: number;
   activeFooterDistance: number;
   pendingHeaderDistance: number | null;
@@ -41,6 +45,9 @@ export type BreakDecision = {
  * @param maxHeaderContentHeight - Maximum header content height in pixels across all header variants.
  *        When provided (> 0), ensures body content starts below header content by adjusting top margin
  *        to be at least headerDistance + maxHeaderContentHeight. Defaults to 0 (no header overlap prevention).
+ * @param maxFooterContentHeight - Maximum footer content height in pixels across all footer variants.
+ *        When provided (> 0), ensures body content ends above footer content by adjusting bottom margin
+ *        to be at least footerDistance + maxFooterContentHeight. Defaults to 0 (no footer overlap prevention).
  * @returns Object containing:
  *   - decision: Break decision with flags for page breaks, mid-page regions, and parity requirements
  *   - state: Updated section state with scheduled pending properties
@@ -67,6 +74,7 @@ export function scheduleSectionBreak(
   state: SectionState,
   baseMargins: { top: number; bottom: number; left: number; right: number },
   maxHeaderContentHeight: number = 0,
+  maxFooterContentHeight: number = 0,
 ): { decision: BreakDecision; state: SectionState } {
   const next = { ...state };
 
@@ -79,6 +87,15 @@ export function scheduleSectionBreak(
     return Math.max(baseTop, headerDistance);
   };
 
+  // Helper to calculate required bottom margin that accounts for footer content height
+  const calcRequiredBottomMargin = (footerDistance: number, baseBottom: number): number => {
+    if (maxFooterContentHeight > 0) {
+      // Body must end at least at footerDistance + footerContentHeight from page bottom
+      return Math.max(baseBottom, footerDistance + maxFooterContentHeight);
+    }
+    return Math.max(baseBottom, footerDistance);
+  };
+
   // Special handling for first section break (appears before any content)
   if (block.attrs?.isFirstSection && !next.hasAnyPages) {
     if (block.pageSize) {
@@ -89,20 +106,38 @@ export function scheduleSectionBreak(
       next.activeOrientation = block.orientation;
       next.pendingOrientation = null;
     }
+    const headerDistance =
+      typeof block.margins?.header === 'number' ? Math.max(0, block.margins.header) : next.activeHeaderDistance;
+    const footerDistance =
+      typeof block.margins?.footer === 'number' ? Math.max(0, block.margins.footer) : next.activeFooterDistance;
+    const sectionTop = typeof block.margins?.top === 'number' ? Math.max(0, block.margins.top) : baseMargins.top;
+    const sectionBottom =
+      typeof block.margins?.bottom === 'number' ? Math.max(0, block.margins.bottom) : baseMargins.bottom;
     if (block.margins?.header !== undefined) {
-      const headerDistance = Math.max(0, block.margins.header);
       next.activeHeaderDistance = headerDistance;
       next.pendingHeaderDistance = headerDistance;
-      // Account for actual header content height
-      next.activeTopMargin = calcRequiredTopMargin(headerDistance, baseMargins.top);
-      next.pendingTopMargin = next.activeTopMargin;
     }
     if (block.margins?.footer !== undefined) {
-      const footerDistance = Math.max(0, block.margins.footer);
       next.activeFooterDistance = footerDistance;
       next.pendingFooterDistance = footerDistance;
-      next.activeBottomMargin = Math.max(baseMargins.bottom, footerDistance);
+    }
+    if (block.margins?.top !== undefined || block.margins?.header !== undefined) {
+      next.activeTopMargin = calcRequiredTopMargin(headerDistance, sectionTop);
+      next.pendingTopMargin = next.activeTopMargin;
+    }
+    if (block.margins?.bottom !== undefined || block.margins?.footer !== undefined) {
+      next.activeBottomMargin = calcRequiredBottomMargin(footerDistance, sectionBottom);
       next.pendingBottomMargin = next.activeBottomMargin;
+    }
+    if (block.margins?.left !== undefined) {
+      const leftMargin = Math.max(0, block.margins.left);
+      next.activeLeftMargin = leftMargin;
+      next.pendingLeftMargin = leftMargin;
+    }
+    if (block.margins?.right !== undefined) {
+      const rightMargin = Math.max(0, block.margins.right);
+      next.activeRightMargin = rightMargin;
+      next.pendingRightMargin = rightMargin;
     }
     if (block.columns) {
       next.activeColumns = { count: block.columns.count, gap: block.columns.gap };
@@ -114,22 +149,48 @@ export function scheduleSectionBreak(
   // Update pending margins (take max to ensure header/footer space)
   const headerPx = block.margins?.header;
   const footerPx = block.margins?.footer;
+  const topPx = block.margins?.top;
+  const bottomPx = block.margins?.bottom;
   const nextTop = next.pendingTopMargin ?? next.activeTopMargin;
   const nextBottom = next.pendingBottomMargin ?? next.activeBottomMargin;
+  const nextLeft = next.pendingLeftMargin ?? next.activeLeftMargin;
+  const nextRight = next.pendingRightMargin ?? next.activeRightMargin;
   const nextHeader = next.pendingHeaderDistance ?? next.activeHeaderDistance;
   const nextFooter = next.pendingFooterDistance ?? next.activeFooterDistance;
 
   // When header margin changes, recalculate top margin accounting for header content height
-  if (typeof headerPx === 'number') {
-    const newHeaderDist = Math.max(0, headerPx);
+  if (typeof headerPx === 'number' || typeof topPx === 'number') {
+    const newHeaderDist = typeof headerPx === 'number' ? Math.max(0, headerPx) : nextHeader;
+    const sectionTop = typeof topPx === 'number' ? Math.max(0, topPx) : baseMargins.top;
     next.pendingHeaderDistance = newHeaderDist;
-    next.pendingTopMargin = calcRequiredTopMargin(newHeaderDist, baseMargins.top);
+    next.pendingTopMargin = calcRequiredTopMargin(newHeaderDist, sectionTop);
   } else {
     next.pendingTopMargin = nextTop;
     next.pendingHeaderDistance = nextHeader;
   }
-  next.pendingBottomMargin = typeof footerPx === 'number' ? Math.max(baseMargins.bottom, footerPx) : nextBottom;
-  next.pendingFooterDistance = typeof footerPx === 'number' ? Math.max(0, footerPx) : nextFooter;
+
+  // When footer margin changes, recalculate bottom margin accounting for footer content height
+  if (typeof footerPx === 'number' || typeof bottomPx === 'number') {
+    const newFooterDist = typeof footerPx === 'number' ? Math.max(0, footerPx) : nextFooter;
+    const sectionBottom = typeof bottomPx === 'number' ? Math.max(0, bottomPx) : baseMargins.bottom;
+    next.pendingFooterDistance = newFooterDist;
+    next.pendingBottomMargin = calcRequiredBottomMargin(newFooterDist, sectionBottom);
+  } else {
+    next.pendingBottomMargin = nextBottom;
+    next.pendingFooterDistance = nextFooter;
+  }
+
+  // Update pending left/right margins
+  if (typeof block.margins?.left === 'number') {
+    next.pendingLeftMargin = Math.max(0, block.margins.left);
+  } else {
+    next.pendingLeftMargin = nextLeft;
+  }
+  if (typeof block.margins?.right === 'number') {
+    next.pendingRightMargin = Math.max(0, block.margins.right);
+  } else {
+    next.pendingRightMargin = nextRight;
+  }
 
   // Schedule page size change if present
   if (block.pageSize) {
@@ -207,6 +268,12 @@ export function applyPendingToActive(state: SectionState): SectionState {
   if (next.pendingBottomMargin != null) {
     next.activeBottomMargin = next.pendingBottomMargin;
   }
+  if (next.pendingLeftMargin != null) {
+    next.activeLeftMargin = next.pendingLeftMargin;
+  }
+  if (next.pendingRightMargin != null) {
+    next.activeRightMargin = next.pendingRightMargin;
+  }
   if (next.pendingHeaderDistance != null) {
     next.activeHeaderDistance = next.pendingHeaderDistance;
   }
@@ -224,6 +291,8 @@ export function applyPendingToActive(state: SectionState): SectionState {
   }
   next.pendingTopMargin = null;
   next.pendingBottomMargin = null;
+  next.pendingLeftMargin = null;
+  next.pendingRightMargin = null;
   next.pendingHeaderDistance = null;
   next.pendingFooterDistance = null;
   next.pendingPageSize = null;

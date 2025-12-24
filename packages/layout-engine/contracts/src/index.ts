@@ -4,6 +4,16 @@ export { computeTabStops, layoutWithTabs, calculateTabWidth } from './engines/ta
 // Re-export TabStop for external consumers
 export type { TabStop };
 
+// Export justify utilities
+export {
+  shouldApplyJustify,
+  calculateJustifySpacing,
+  SPACE_CHARS,
+  type ShouldApplyJustifyParams,
+  type CalculateJustifySpacingParams,
+} from './justify-utils.js';
+
+export { computeFragmentPmRange, computeLinePmRange, type LinePmRange } from './pm-range.js';
 /** Inline field annotation metadata extracted from w:sdt nodes. */
 export type FieldAnnotationMetadata = {
   type: 'fieldAnnotation';
@@ -724,10 +734,18 @@ export type SectionBreakBlock = {
   pageSize?: { w: number; h: number };
   orientation?: 'portrait' | 'landscape';
   margins: {
+    /** Header margin (distance from top of page to header content) */
     header?: number;
+    /** Footer margin (distance from bottom of page to footer content) */
     footer?: number;
+    /** Top page margin (distance from top of page to body content) */
     top?: number;
+    /** Right page margin */
+    right?: number;
+    /** Bottom page margin */
     bottom?: number;
+    /** Left page margin */
+    left?: number;
   };
   numbering?: {
     format?: 'decimal' | 'lowerLetter' | 'upperLetter' | 'lowerRoman' | 'upperRoman';
@@ -989,9 +1007,98 @@ export type DropCapDescriptor = {
   measuredHeight?: number;
 };
 
+/**
+ * Word layout configuration for list items created via input rules.
+ *
+ * This type represents the structure of wordLayout data produced by @superdoc/word-layout
+ * for paragraphs with list markers. It contains metadata about marker positioning and
+ * text alignment that differs from standard hanging-indent lists.
+ *
+ * Two distinct list rendering modes exist:
+ * 1. **Standard hanging indent**: Marker sits in hanging indent area, text starts at paraIndentLeft
+ * 2. **First-line indent mode**: Marker is at paraIndentLeft + firstLine, text starts at textStartPx
+ *
+ * This type enables type-safe access to word-layout-specific properties without unsafe casts.
+ *
+ * @example
+ * ```typescript
+ * // Standard hanging indent list (marker in hanging indent area)
+ * const standardListConfig: WordLayoutConfig = {
+ *   marker: {
+ *     markerText: "1.",
+ *     justification: "right",
+ *     gutterWidthPx: 18
+ *   }
+ * };
+ * // Text starts at paraIndentLeft, marker is placed in hanging indent area
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // First-line indent mode list (input-rule created, e.g., typing "1. ")
+ * const firstLineIndentConfig: WordLayoutConfig = {
+ *   firstLineIndentMode: true,
+ *   textStartPx: 56,  // Pre-calculated: paraIndentLeft + firstLine + markerWidth + tabWidth
+ *   marker: {
+ *     markerText: "1.",
+ *     markerX: 36,      // Position where marker renders
+ *     textStartX: 56    // Where text starts after marker
+ *   }
+ * };
+ * // Text starts at textStartPx (56px), marker is at markerX (36px)
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Checking for first-line indent mode in layout code
+ * const wordLayout = block.attrs?.wordLayout;
+ * if (wordLayout?.firstLineIndentMode) {
+ *   const textStart = wordLayout.textStartPx ?? 0;
+ *   // Use textStart for positioning text on first line
+ * } else {
+ *   // Use standard hanging indent calculations
+ * }
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Non-list paragraph (no word layout config)
+ * const regularParagraph = {
+ *   kind: 'paragraph',
+ *   attrs: {
+ *     indent: { left: 36, firstLine: 18 }
+ *     // No wordLayout property
+ *   }
+ * };
+ * // Text positioning uses standard paragraph indent logic
+ * ```
+ */
+export type WordLayoutConfig = {
+  /**
+   * Whether this list uses first-line indent mode (true for input-rule-created lists).
+   * When true, text positioning uses textStartPx instead of standard hanging indent calculations.
+   */
+  firstLineIndentMode?: boolean;
+  /**
+   * Absolute X position in pixels where text content starts on the first line.
+   * Includes marker width, tab width, and any additional spacing.
+   * Only meaningful when firstLineIndentMode is true.
+   */
+  textStartPx?: number;
+  /**
+   * Marker metadata for word-layout lists.
+   * Present when the paragraph is part of a list structure.
+   */
+  marker?: unknown;
+  /**
+   * Additional word-layout properties may be present but are not yet typed.
+   */
+  [key: string]: unknown;
+};
+
 export type ParagraphAttrs = {
   styleId?: string;
-  alignment?: 'left' | 'center' | 'right' | 'justify';
+  alignment?: 'left' | 'center' | 'right' | 'justify' | 'both';
   spacing?: ParagraphSpacing;
   contextualSpacing?: boolean;
   indent?: ParagraphIndent;
@@ -1024,8 +1131,12 @@ export type ParagraphAttrs = {
   tocInstruction?: string;
   /** Floating alignment for positioned paragraphs (from w:framePr/@w:xAlign). */
   floatAlignment?: 'left' | 'right' | 'center';
-  /** Word paragraph layout output from @superdoc/word-layout. */
-  wordLayout?: unknown;
+  /**
+   * Word paragraph layout output from @superdoc/word-layout.
+   * Contains metadata about list marker positioning and text alignment for word-layout lists.
+   * Use WordLayoutConfig type for type-safe access to known properties.
+   */
+  wordLayout?: WordLayoutConfig;
   sdt?: SdtMetadata;
   /** Container SDT for blocks with both primary and container metadata. */
   containerSdt?: SdtMetadata;
@@ -1095,6 +1206,10 @@ export type Line = {
   lineHeight: number;
   /** Maximum available width for this line (used during measurement). */
   maxWidth?: number;
+  /** Content width before justify compression (used for negative word-spacing calculation). */
+  naturalWidth?: number;
+  /** Number of spaces in the line (pre-computed for efficiency in justify calculations). */
+  spaceCount?: number;
   segments?: LineSegment[];
   leaders?: LeaderDecoration[];
   bars?: BarDecoration[];
@@ -1362,6 +1477,8 @@ export type TableFragment = {
   repeatHeaderCount?: number;
   partialRow?: PartialRowInfo;
   metadata?: TableFragmentMetadata;
+  pmStart?: number;
+  pmEnd?: number;
 };
 
 export type ImageFragment = {
@@ -1438,6 +1555,14 @@ export type Layout = {
    * Defaults to 0 if not specified (pages assumed to be stacked with no gap).
    */
   pageGap?: number;
+  /**
+   * Document epoch identifier for the document state used to produce this layout.
+   *
+   * This value is set by higher-level orchestration (e.g., PresentationEditor) and is
+   * stamped into the painted DOM as `data-layout-epoch` to enable deterministic mapping
+   * from DOM-derived positions back to the current ProseMirror document state.
+   */
+  layoutEpoch?: number;
 };
 
 export interface PainterDOM {

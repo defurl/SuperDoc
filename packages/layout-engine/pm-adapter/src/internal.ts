@@ -25,6 +25,7 @@ import {
 } from './utilities.js';
 import {
   paragraphToFlowBlocks as paragraphToFlowBlocksImpl,
+  contentBlockNodeToDrawingBlock,
   imageNodeToBlock,
   handleImageNode,
   vectorShapeNodeToDrawingBlock,
@@ -61,6 +62,9 @@ import type {
   BatchAdapterOptions,
   ThemeColorPalette,
   ConverterContext,
+  TableNodeToBlockOptions,
+  ParagraphToFlowBlocksConverter,
+  TableNodeToBlockConverter,
 } from './types.js';
 import { defaultDecimalSeparatorFor } from '../../../../shared/locale-utils/index.js';
 import { DEFAULT_HYPERLINK_CONFIG } from './constants';
@@ -162,7 +166,9 @@ export function toFlowBlocks(pmDoc: PMNode | object, options?: AdapterOptions): 
 
   const blocks: FlowBlock[] = [];
   const bookmarks = new Map<string, number>();
-  const positions = buildPositionMap(doc);
+  const positions =
+    options?.positions ??
+    (options?.atomNodeTypes ? buildPositionMap(doc, { atomNodeTypes: options.atomNodeTypes }) : buildPositionMap(doc));
 
   const nextBlockId = createBlockIdGenerator(idPrefix);
   const blockCounts: Partial<Record<FlowBlock['kind'], number>> = {};
@@ -260,7 +266,19 @@ export function toFlowBlocks(pmDoc: PMNode | object, options?: AdapterOptions): 
       bookmarks,
       hyperlinkConfig,
       themeColorsParam ?? themeColors,
+      paragraphConverter,
       converterCtx ?? converterContext,
+      {
+        listCounterContext: { getListCounter, incrementListCounter, resetListCounter },
+        converters: {
+          paragraphToFlowBlocks: paragraphConverter,
+          imageNodeToBlock,
+          vectorShapeNodeToDrawingBlock,
+          shapeGroupNodeToDrawingBlock,
+          shapeContainerNodeToDrawingBlock,
+          shapeTextboxNodeToDrawingBlock,
+        },
+      },
     );
 
   // Build handler context for node processing
@@ -283,9 +301,14 @@ export function toFlowBlocks(pmDoc: PMNode | object, options?: AdapterOptions): 
       currentParagraphIndex: 0,
     },
     converters: {
-      paragraphToFlowBlocks: paragraphConverter,
-      tableNodeToBlock: tableConverter,
+      // Type assertion needed due to signature mismatch between actual function and type definition
+      paragraphToFlowBlocks: paragraphConverter as unknown as ParagraphToFlowBlocksConverter,
+      tableNodeToBlock: tableConverter as unknown as TableNodeToBlockConverter,
       imageNodeToBlock,
+      vectorShapeNodeToDrawingBlock,
+      shapeGroupNodeToDrawingBlock,
+      shapeContainerNodeToDrawingBlock,
+      shapeTextboxNodeToDrawingBlock,
     },
   };
 
@@ -437,6 +460,7 @@ function paragraphToFlowBlocks(
     hyperlinkConfig,
     themeColors,
     {
+      contentBlockNodeToDrawingBlock,
       imageNodeToBlock,
       vectorShapeNodeToDrawingBlock,
       shapeGroupNodeToDrawingBlock,
@@ -468,6 +492,18 @@ function paragraphToFlowBlocks(
           themeColors,
           paragraphToFlowBlocks,
           converterCtx ?? converterContext,
+          {
+            listCounterContext,
+            converters: {
+              // Type assertion needed due to signature mismatch between actual function and type definition
+              paragraphToFlowBlocks: paragraphToFlowBlocksImpl as unknown as ParagraphToFlowBlocksConverter,
+              imageNodeToBlock,
+              vectorShapeNodeToDrawingBlock,
+              shapeGroupNodeToDrawingBlock,
+              shapeContainerNodeToDrawingBlock,
+              shapeTextboxNodeToDrawingBlock,
+            },
+          },
         ),
     },
     converterContext,
@@ -493,7 +529,9 @@ function tableNodeToBlock(
   bookmarks?: Map<string, number>,
   hyperlinkConfig?: HyperlinkConfig,
   themeColors?: ThemeColorPalette,
+  _paragraphToFlowBlocksParam?: unknown,
   converterContext?: ConverterContext,
+  options?: TableNodeToBlockOptions,
 ): FlowBlock | null {
   return tableNodeToBlockImpl(
     node,
@@ -508,5 +546,16 @@ function tableNodeToBlock(
     themeColors,
     paragraphToFlowBlocks,
     converterContext,
+    options ?? {
+      converters: {
+        // Type assertion needed due to signature mismatch between actual function and type definition
+        paragraphToFlowBlocks: paragraphToFlowBlocksImpl as unknown as ParagraphToFlowBlocksConverter,
+        imageNodeToBlock,
+        vectorShapeNodeToDrawingBlock,
+        shapeGroupNodeToDrawingBlock,
+        shapeContainerNodeToDrawingBlock,
+        shapeTextboxNodeToDrawingBlock,
+      },
+    },
   );
 }

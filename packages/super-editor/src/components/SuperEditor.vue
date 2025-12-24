@@ -18,6 +18,7 @@ import { adjustPaginationBreaks } from './pagination-helpers.js';
 import { getFileObject } from '@superdoc/common';
 import BlankDOCX from '@superdoc/common/data/blank.docx?url';
 import { isHeadless } from '@/utils/headless-helpers.js';
+import { isMacOS } from '@/core/utilities/isMacOS.js';
 const emit = defineEmits(['editor-ready', 'editor-click', 'editor-keydown', 'comments-loaded', 'selection-update']);
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -122,7 +123,13 @@ const tableResizeState = reactive({
 /**
  * Image resize overlay state management
  */
-const imageResizeState = reactive({
+interface ImageResizeState {
+  visible: boolean;
+  imageElement: HTMLElement | null;
+  blockId: string | null;
+}
+
+const imageResizeState: ImageResizeState = reactive({
   visible: false,
   imageElement: null,
   blockId: null,
@@ -362,13 +369,31 @@ const hideTableResizeOverlay = () => {
 };
 
 /**
- * Update image resize overlay visibility based on mouse position
- * Shows overlay when hovering over images with data-image-metadata attribute
+ * Update image resize overlay visibility based on mouse position.
+ * Shows overlay when hovering over images with data-image-metadata attribute.
+ * Supports both standalone image fragments (ImageBlock) and inline images (ImageRun).
+ *
+ * Edge Cases:
+ * - If editorElem is not mounted, returns early without modifying overlay state
+ * - If event.target is not an Element (e.g., text node), hides overlay and returns
+ * - When hovering over the overlay itself, preserves visibility without changing imageElement
+ * - Ignores images without data-image-metadata attribute (non-resizable images)
+ *
+ * @param {MouseEvent} event - The mouse event containing target and coordinates
+ * @returns {void}
  */
-const updateImageResizeOverlay = (event) => {
+const updateImageResizeOverlay = (event: MouseEvent): void => {
   if (!editorElem.value) return;
 
-  let target = event.target;
+  // Type guard: ensure event target is an Element
+  if (!(event.target instanceof Element)) {
+    imageResizeState.visible = false;
+    imageResizeState.imageElement = null;
+    imageResizeState.blockId = null;
+    return;
+  }
+
+  let target: Element | null = event.target;
   // Walk up DOM tree to find image fragment or overlay
   while (target && target !== document.body) {
     // Check if we're over the image resize overlay or any of its children (handles, guideline)
@@ -380,10 +405,20 @@ const updateImageResizeOverlay = (event) => {
       return;
     }
 
+    // Check for standalone image fragments (ImageBlock)
     if (target.classList?.contains('superdoc-image-fragment') && target.hasAttribute('data-image-metadata')) {
       imageResizeState.visible = true;
-      imageResizeState.imageElement = target;
+      imageResizeState.imageElement = target as HTMLElement;
       imageResizeState.blockId = target.getAttribute('data-sd-block-id');
+      return;
+    }
+
+    // Check for inline images (ImageRun inside paragraphs)
+    if (target.classList?.contains('superdoc-inline-image') && target.hasAttribute('data-image-metadata')) {
+      imageResizeState.visible = true;
+      imageResizeState.imageElement = target as HTMLElement;
+      // Inline images don't have block IDs, use pmStart as identifier
+      imageResizeState.blockId = target.getAttribute('data-pm-start');
       return;
     }
     target = target.parentElement;
@@ -716,7 +751,31 @@ onMounted(() => {
   if (props.options?.suppressSkeletonLoader || !props.options?.collaborationProvider) editorReady.value = true;
 });
 
+/**
+ * Handle mouse down events in the editor margin area.
+ * Moves the cursor to the clicked location for normal left-clicks, but preserves
+ * the current selection for right-clicks and context menu triggers.
+ *
+ * This prevents unwanted cursor movement when the user is trying to open a context menu:
+ * - Right-clicks (button !== 0) are ignored because they open the context menu
+ * - Ctrl+Click on Mac is ignored because it triggers the context menu (even though button === 0)
+ * - Clicks directly on the ProseMirror content area are ignored (handled by ProseMirror itself)
+ *
+ * For normal left-clicks on margin areas, delegates to onMarginClickCursorChange which
+ * positions the cursor at the appropriate location based on the click coordinates.
+ *
+ * @param {MouseEvent} event - The mousedown event from the margin click
+ * @returns {void}
+ */
 const handleMarginClick = (event) => {
+  // Skip right-clicks - don't move cursor when user is trying to open context menu
+  if (event.button !== 0) {
+    return;
+  }
+  // On Mac, Ctrl+Click triggers context menu but reports button=0
+  if (event.ctrlKey && isMacOS()) {
+    return;
+  }
   if (event.target.classList.contains('ProseMirror')) return;
 
   onMarginClickCursorChange(event, activeEditor.value);

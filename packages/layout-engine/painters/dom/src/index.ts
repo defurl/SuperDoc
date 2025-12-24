@@ -52,6 +52,8 @@ export type PageDecorationPayload = {
   contentWidth?: number;
   headerId?: string;
   sectionType?: string;
+  /** Minimum Y coordinate from layout; negative when content extends above y=0 */
+  minY?: number;
   box?: { x: number; y: number; width: number; height: number };
   hitRegion?: { x: number; y: number; width: number; height: number };
 };
@@ -67,6 +69,8 @@ export type DomPainterOptions = {
   measures: Measure[];
   pageStyles?: PageStyles;
   layoutMode?: LayoutMode;
+  /** Gap between pages in pixels (default: 24px for vertical, 20px for horizontal) */
+  pageGap?: number;
   headerProvider?: PageDecorationProvider;
   footerProvider?: PageDecorationProvider;
   /**
@@ -100,10 +104,12 @@ export const createDomPainter = (
   options: DomPainterOptions,
 ): PainterDOM & {
   setProviders?: (header?: PageDecorationProvider, footer?: PageDecorationProvider) => void;
+  setVirtualizationPins?: (pageIndices: number[] | null | undefined) => void;
 } => {
   const painter = new DomPainter(options.blocks, options.measures, {
     pageStyles: options.pageStyles,
     layoutMode: options.layoutMode,
+    pageGap: options.pageGap,
     headerProvider: options.headerProvider,
     footerProvider: options.footerProvider,
     virtualization: options.virtualization,
@@ -127,6 +133,9 @@ export const createDomPainter = (
     // Non-standard extension for demo app to avoid re-instantiating on provider changes
     setProviders(header?: PageDecorationProvider, footer?: PageDecorationProvider) {
       painter.setProviders(header, footer);
+    },
+    setVirtualizationPins(pageIndices: number[] | null | undefined) {
+      painter.setVirtualizationPins(pageIndices);
     },
   };
 };

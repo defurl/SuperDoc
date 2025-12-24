@@ -16,6 +16,7 @@ import type { PMNode, AdapterOptions, BatchAdapterOptions, PMDocumentMap } from 
 vi.mock('./converters/index.js', () => ({
   paragraphToFlowBlocks: vi.fn(() => []),
   handleParagraphNode: vi.fn(),
+  contentBlockNodeToDrawingBlock: vi.fn(),
   imageNodeToBlock: vi.fn(),
   handleImageNode: vi.fn(),
   vectorShapeNodeToDrawingBlock: vi.fn(),
@@ -717,6 +718,18 @@ describe('internal', () => {
         expect(buildPositionMap).toHaveBeenCalledWith(doc);
       });
 
+      it('should pass atom node types to position map when provided', () => {
+        const doc: PMNode = {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [] }],
+        };
+        const atomNodeTypes = ['customAtom'];
+
+        toFlowBlocks(doc, { atomNodeTypes });
+
+        expect(buildPositionMap).toHaveBeenCalledWith(doc, { atomNodeTypes });
+      });
+
       it('should pass position map to handlers', () => {
         const doc: PMNode = {
           type: 'doc',
@@ -809,11 +822,11 @@ describe('internal', () => {
         expect(handleParagraphNode).toHaveBeenCalledWith(
           expect.any(Object),
           expect.objectContaining({
-            converters: {
+            converters: expect.objectContaining({
               paragraphToFlowBlocks: expect.any(Function),
               tableNodeToBlock: expect.any(Function),
               imageNodeToBlock: expect.any(Function),
-            },
+            }),
           }),
         );
       });
@@ -1066,11 +1079,13 @@ describe('internal', () => {
       const call = vi.mocked(handleParagraphNode).mock.calls[0];
       const context = call![1];
 
-      expect(context.converters).toEqual({
-        paragraphToFlowBlocks: expect.any(Function),
-        tableNodeToBlock: expect.any(Function),
-        imageNodeToBlock: expect.any(Function),
-      });
+      expect(context.converters).toEqual(
+        expect.objectContaining({
+          paragraphToFlowBlocks: expect.any(Function),
+          tableNodeToBlock: expect.any(Function),
+          imageNodeToBlock: expect.any(Function),
+        }),
+      );
     });
 
     it('passes converterContext through paragraph converter', () => {

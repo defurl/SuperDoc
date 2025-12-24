@@ -503,11 +503,33 @@ describe('mark application', () => {
       expect(normalizeUnderlineStyle('wavy')).toBe('wavy');
     });
 
-    it('returns "single" as default for unknown values', () => {
-      expect(normalizeUnderlineStyle('unknown')).toBe('single');
+    it('returns undefined for explicit off values', () => {
+      expect(normalizeUnderlineStyle('none')).toBeUndefined();
+      expect(normalizeUnderlineStyle('0')).toBeUndefined();
+      expect(normalizeUnderlineStyle('false')).toBeUndefined();
+      expect(normalizeUnderlineStyle('off')).toBeUndefined();
+      expect(normalizeUnderlineStyle(0)).toBeUndefined();
+      expect(normalizeUnderlineStyle(false)).toBeUndefined();
+    });
+
+    it('returns "single" for undefined/null (default)', () => {
       expect(normalizeUnderlineStyle(null)).toBe('single');
       expect(normalizeUnderlineStyle(undefined)).toBe('single');
+    });
+
+    it('returns "single" for unknown underline types', () => {
+      expect(normalizeUnderlineStyle('words')).toBe('single');
+      expect(normalizeUnderlineStyle('thick')).toBe('single');
+      expect(normalizeUnderlineStyle('unknown')).toBe('single');
       expect(normalizeUnderlineStyle(123)).toBe('single');
+    });
+
+    it('handles case-insensitive off values', () => {
+      expect(normalizeUnderlineStyle('NONE')).toBeUndefined();
+      expect(normalizeUnderlineStyle('False')).toBeUndefined();
+      expect(normalizeUnderlineStyle('OFF')).toBeUndefined();
+      expect(normalizeUnderlineStyle('Double')).toBe('double');
+      expect(normalizeUnderlineStyle('WAVY')).toBe('wavy');
     });
   });
 
@@ -875,6 +897,18 @@ describe('mark application', () => {
       applyMarksToRun(run, [{ type: 'underline', attrs: { color: 'FF0000' } }]);
 
       expect(run.underline?.color).toBe('#FF0000');
+    });
+
+    it('clears underline when underline mark is explicit none', () => {
+      const run: TextRun = {
+        text: 'Hello',
+        fontFamily: 'Arial',
+        fontSize: 12,
+        underline: { style: 'single' },
+      };
+      applyMarksToRun(run, [{ type: 'underline', attrs: { underlineType: 'none' } }]);
+
+      expect(run.underline).toBeUndefined();
     });
 
     it('applies textStyle mark', () => {

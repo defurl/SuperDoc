@@ -105,6 +105,19 @@ describe('DomPainter virtualization (vertical)', () => {
     expect(bottomSpacer).toBeTruthy();
   });
 
+  it('defaults virtualization gap to 72px when no gap is provided', () => {
+    const painter = createDomPainter({
+      blocks: [block],
+      measures: [measure],
+      virtualization: { enabled: true, window: 2 },
+    });
+
+    const layout = makeLayout(3);
+    painter.paint(layout, mount);
+
+    expect(mount.style.gap).toBe('72px');
+  });
+
   it('updates the window on scroll', () => {
     const painter = createDomPainter({
       blocks: [block],
@@ -180,6 +193,33 @@ describe('DomPainter virtualization (vertical)', () => {
     // With overscan=2, should render up to 3 + 2*2 = 7 pages
     expect(pages.length).toBeGreaterThanOrEqual(3);
     expect(pages.length).toBeLessThanOrEqual(7);
+  });
+
+  it('pins pages outside the scroll window', () => {
+    const painter = createDomPainter({
+      blocks: [block],
+      measures: [measure],
+      virtualization: { enabled: true, window: 2, overscan: 0, gap: 72, paddingTop: 0 },
+    });
+
+    const layout = makeLayout(12);
+    painter.paint(layout, mount);
+
+    expect(mount.querySelector('.superdoc-page[data-page-index="10"]')).toBeNull();
+
+    painter.setVirtualizationPins?.([10]);
+
+    expect(mount.querySelector('.superdoc-page[data-page-index="10"]')).toBeTruthy();
+
+    const gapSpacer = mount.querySelector('[data-virtual-spacer="gap"]') as HTMLElement | null;
+    expect(gapSpacer).toBeTruthy();
+    expect(gapSpacer?.dataset.gapFrom).toBe('1');
+    expect(gapSpacer?.dataset.gapTo).toBe('10');
+
+    painter.setVirtualizationPins?.([]);
+
+    expect(mount.querySelector('.superdoc-page[data-page-index="10"]')).toBeNull();
+    expect(mount.querySelector('[data-virtual-spacer="gap"]')).toBeNull();
   });
 
   it('updates providers without remounting pages', () => {
