@@ -104,12 +104,15 @@ export function updateColumns(node, colgroup, table, _cellMinWidth) {
     }
   }
 
+  // Minimum column width in pixels to prevent columns from collapsing
+  const MIN_COLUMN_WIDTH_PX = 20;
+
   const normalizedWidths = widths.map((widthPx) => {
     const numericWidth = Number(widthPx);
     if (!Number.isFinite(numericWidth)) return null;
     if (numericWidth < 0) return null;
-    if (numericWidth === 0) return 0;
-    if (numericWidth < 1) return 0;
+    // Enforce minimum width to prevent column collapse
+    if (numericWidth === 0 || numericWidth < MIN_COLUMN_WIDTH_PX) return MIN_COLUMN_WIDTH_PX;
     return numericWidth;
   });
 

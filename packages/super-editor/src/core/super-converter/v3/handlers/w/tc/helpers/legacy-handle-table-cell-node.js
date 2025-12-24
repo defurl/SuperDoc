@@ -1,6 +1,38 @@
 import { eighthPointsToPixels, twipsToPixels } from '@converter/helpers';
 import { translator as tcPrTranslator } from '../../tcPr';
 
+// Default page content width in twips (8.5" - 2" margins = 6.5" = 9360 twips)
+const DEFAULT_CONTENT_WIDTH_TWIPS = 9360;
+
+/**
+ * Convert cell width value to pixels based on width type
+ * @param {number|null} value - The width value
+ * @param {string|null} type - The width type ('dxa', 'pct', 'auto', 'nil')
+ * @param {number} [contentWidthTwips] - The content width for percentage calculations
+ * @returns {number|null} Width in pixels, or null if auto/nil
+ */
+function convertCellWidthToPixels(value, type, contentWidthTwips = DEFAULT_CONTENT_WIDTH_TWIPS) {
+  if (value == null || value === 0) return null;
+
+  switch (type) {
+    case 'pct':
+      // Word stores percentages in fiftieths (e.g., 5000 => 100%)
+      // Convert to actual percentage, then calculate pixel width based on content width
+      const percent = value / 50; // Convert from fiftieths to percentage
+      const widthTwips = (contentWidthTwips * percent) / 100;
+      return twipsToPixels(widthTwips);
+
+    case 'nil':
+    case 'auto':
+      return null;
+
+    case 'dxa':
+    default:
+      // Default is twips (dxa)
+      return twipsToPixels(value);
+  }
+}
+
 /**
  * @param {Object} options
  * @returns {{type: string, content: (*|*[]), attrs: {}}}
@@ -42,9 +74,9 @@ export function handleTableCellNode({
   const colspan = tableCellProperties.gridSpan;
   if (colspan && !isNaN(parseInt(colspan, 10))) attributes['colspan'] = parseInt(colspan, 10);
 
-  // Width
-  let width = tableCellProperties.cellWidth?.value ? twipsToPixels(tableCellProperties.cellWidth?.value) : null;
+  // Width - properly handle different width types (dxa, pct, auto, nil)
   const widthType = tableCellProperties.cellWidth?.type;
+  let width = convertCellWidthToPixels(tableCellProperties.cellWidth?.value, widthType);
   if (widthType) attributes['widthType'] = widthType;
 
   if (!width && columnWidth) width = columnWidth;
