@@ -65,7 +65,10 @@ export const pageStyles = (width: number, height: number, overrides?: PageStyles
     boxShadow: merged.boxShadow,
     border: merged.border,
     margin: merged.margin,
-    overflow: 'hidden',
+    // Changed from 'hidden' to 'visible' to prevent table content from being
+    // clipped at page boundaries. Tables can extend beyond page boundaries
+    // and should display all their content without cutting off text.
+    overflow: 'visible',
   };
 };
 

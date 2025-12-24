@@ -1035,6 +1035,21 @@ export function layoutTableBlock({
     return;
   }
 
+  // 1.5 Check if table should be kept together (not split across pages)
+  // If the entire table fits on a single page, use monolithic layout to prevent splitting.
+  // This ensures tables that can fit on one page are not unnecessarily split.
+  const initialState = ensurePage();
+  const pageContentHeight = initialState.contentBottom - (initialState.page.margins?.top ?? 0);
+  const tableHeight = measure.totalHeight;
+
+  // Use monolithic layout if:
+  // - Table height fits within a single page's content area
+  // - This prevents tables from being split when they could fit on the next page
+  if (tableHeight <= pageContentHeight) {
+    layoutMonolithicTable({ block, measure, columnWidth, ensurePage, advanceColumn, columnX });
+    return;
+  }
+
   // 2. Count header rows
   const headerCount = countHeaderRows(block);
   const headerHeight = headerCount > 0 ? sumRowHeights(measure.rows, 0, headerCount) : 0;

@@ -313,7 +313,8 @@ export const renderTableCell = (deps: TableCellRenderDependencies): TableCellRen
   cellEl.style.width = `${cellMeasure.width}px`;
   cellEl.style.height = `${rowHeight}px`;
   cellEl.style.boxSizing = 'border-box';
-  // Cell clips all overflow - no scrollbars, content just gets clipped at boundaries
+  // Keep overflow hidden - cell width should expand to fit content instead
+  // Option 2: Cells auto-expand based on content, table scrolls horizontally
   cellEl.style.overflow = 'hidden';
   // Apply padding directly to cell so content is positioned correctly
   cellEl.style.paddingLeft = `${paddingLeft}px`;

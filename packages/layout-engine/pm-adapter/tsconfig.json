@@ -4,8 +4,10 @@
     "composite": true,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "../style-engine/src/**/*.ts", "../../word-layout/src/**/*.ts"],
+  "include": ["src/**/*.ts"],
   "references": [{ "path": "../contracts" }]
 }

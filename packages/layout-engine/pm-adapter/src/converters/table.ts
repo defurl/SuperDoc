@@ -451,103 +451,17 @@ type FloatingTableProperties = {
 /**
  * Extract floating table properties from node attrs and convert to TableAnchor and TableWrap.
  * Returns undefined values if the table is not floating (no tblpPr).
+ *
+ * MODIFIED: Always return empty to DISABLE floating tables.
+ * Floating tables cause text to wrap beside tables instead of below them,
+ * which breaks document layout in web viewers.
  */
-function extractFloatingTableAnchorWrap(node: PMNode): { anchor?: TableAnchor; wrap?: TableWrap } {
-  const tableProperties = node.attrs?.tableProperties as Record<string, unknown> | undefined;
-  const floatingProps = tableProperties?.floatingTableProperties as FloatingTableProperties | undefined;
-
-  if (!floatingProps) {
-    return {};
-  }
-
-  // A table is considered anchored/floating if it has any positioning properties
-  const hasPositioning =
-    floatingProps.tblpX !== undefined ||
-    floatingProps.tblpY !== undefined ||
-    floatingProps.tblpXSpec !== undefined ||
-    floatingProps.tblpYSpec !== undefined ||
-    floatingProps.horzAnchor !== undefined ||
-    floatingProps.vertAnchor !== undefined;
-
-  if (!hasPositioning) {
-    return {};
-  }
-
-  // Map OOXML anchor values to contract types
-  const mapHorzAnchor = (val?: string): TableAnchor['hRelativeFrom'] => {
-    switch (val) {
-      case 'page':
-        return 'page';
-      case 'margin':
-        return 'margin';
-      case 'text':
-      default:
-        return 'column'; // 'text' in OOXML maps to column-relative positioning
-    }
-  };
-
-  const mapVertAnchor = (val?: string): TableAnchor['vRelativeFrom'] => {
-    switch (val) {
-      case 'page':
-        return 'page';
-      case 'margin':
-        return 'margin';
-      case 'text':
-      default:
-        return 'paragraph'; // 'text' in OOXML maps to paragraph-relative positioning
-    }
-  };
-
-  const anchor: TableAnchor = {
-    isAnchored: true,
-    hRelativeFrom: mapHorzAnchor(floatingProps.horzAnchor),
-    vRelativeFrom: mapVertAnchor(floatingProps.vertAnchor),
-  };
-
-  // Set alignment from tblpXSpec/tblpYSpec if present
-  if (floatingProps.tblpXSpec) {
-    anchor.alignH = floatingProps.tblpXSpec;
-  }
-  if (floatingProps.tblpYSpec) {
-    anchor.alignV = floatingProps.tblpYSpec;
-  }
-
-  // Set absolute offsets (convert twips to px)
-  if (floatingProps.tblpX !== undefined) {
-    anchor.offsetH = twipsToPx(floatingProps.tblpX);
-  }
-  if (floatingProps.tblpY !== undefined) {
-    anchor.offsetV = twipsToPx(floatingProps.tblpY);
-  }
-
-  // Build wrap properties from text distances
-  const hasDistances =
-    floatingProps.leftFromText !== undefined ||
-    floatingProps.rightFromText !== undefined ||
-    floatingProps.topFromText !== undefined ||
-    floatingProps.bottomFromText !== undefined;
-
-  const wrap: TableWrap = {
-    type: 'Square', // Floating tables with text distances use square wrapping
-    wrapText: 'bothSides', // Default to text on both sides
-  };
-
-  if (hasDistances) {
-    if (floatingProps.topFromText !== undefined) {
-      wrap.distTop = twipsToPx(floatingProps.topFromText);
-    }
-    if (floatingProps.bottomFromText !== undefined) {
-      wrap.distBottom = twipsToPx(floatingProps.bottomFromText);
-    }
-    if (floatingProps.leftFromText !== undefined) {
-      wrap.distLeft = twipsToPx(floatingProps.leftFromText);
-    }
-    if (floatingProps.rightFromText !== undefined) {
-      wrap.distRight = twipsToPx(floatingProps.rightFromText);
-    }
-  }
-
-  return { anchor, wrap };
+function extractFloatingTableAnchorWrap(_node: PMNode): { anchor?: TableAnchor; wrap?: TableWrap } {
+  // DISABLED: Always return empty to force all tables to be inline (not floating)
+  // This ensures tables render like in MS Word print view - full width with text below
+  // Floating tables cause text to wrap beside tables instead of below them,
+  // which breaks document layout in web viewers.
+  return {};
 }
 
 /**
